@@ -25,12 +25,12 @@ export default function handler(req, res) {
   ];
 
   // Chart dimensions and positioning
-  const svgWidth = 800;
-  const svgHeight = 600;
-  const chartWidth = 600;
-  const chartHeight = 300;
-  const chartX = 100;
-  const chartY = 200;
+  const svgWidth = 1000;
+  const svgHeight = 700;
+  const chartWidth = 700;
+  const chartHeight = 350;
+  const chartX = 120;
+  const chartY = 220;
   const maxCommits = Math.max(...commitData.map(d => d.commits));
 
   // Generate area chart path
@@ -123,28 +123,28 @@ export default function handler(req, res) {
       <rect width="100%" height="100%" fill="#fef08a"/>
       
       <!-- Main container with shadow -->
-      <rect x="50" y="50" width="700" height="500" 
+      <rect x="50" y="50" width="900" height="600" 
             fill="white" 
             stroke="#000" 
             stroke-width="8" 
             filter="url(#dropShadow)"/>
       
       <!-- Title block -->
-      <rect x="80" y="80" width="400" height="80" 
+      <rect x="80" y="80" width="450" height="90" 
             fill="#000" 
             stroke="#000" 
             stroke-width="4" 
             filter="url(#titleShadow)"/>
       
       <!-- Git commit icon (simplified) -->
-      <circle cx="110" cy="120" r="12" fill="#fef08a" stroke="#fef08a" stroke-width="2"/>
-      <line x1="98" y1="120" x2="122" y2="120" stroke="#fef08a" stroke-width="3"/>
-      <line x1="110" y1="108" x2="110" y2="132" stroke="#fef08a" stroke-width="3"/>
+      <circle cx="120" cy="125" r="15" fill="#fef08a" stroke="#fef08a" stroke-width="2"/>
+      <line x1="105" y1="125" x2="135" y2="125" stroke="#fef08a" stroke-width="3"/>
+      <line x1="120" y1="110" x2="120" y2="140" stroke="#fef08a" stroke-width="3"/>
       
       <!-- Title text -->
-      <text x="140" y="135" 
+      <text x="155" y="140" 
             font-family="Arial, sans-serif" 
-            font-size="32" 
+            font-size="36" 
             font-weight="900" 
             fill="white" 
             text-transform="uppercase">
@@ -152,7 +152,7 @@ export default function handler(req, res) {
       </text>
       
       <!-- Chart container -->
-      <rect x="${chartX - 20}" y="${chartY - 20}" width="${chartWidth + 40}" height="${chartHeight + 40}" 
+      <rect x="${chartX - 30}" y="${chartY - 30}" width="${chartWidth + 60}" height="${chartHeight + 80}" 
             fill="#f3f4f6" 
             stroke="#000" 
             stroke-width="4" 
@@ -168,15 +168,15 @@ export default function handler(req, res) {
       
       <!-- Y-axis labels -->
       ${yAxisLabels.map(label => `
-        <text x="${chartX - 15}" y="${label.y + 5}" 
+        <text x="${chartX - 20}" y="${label.y + 6}" 
               font-family="Arial, sans-serif" 
-              font-size="14" 
+              font-size="16" 
               font-weight="bold" 
               fill="#000" 
               text-anchor="end">
           ${label.value}
         </text>
-        <line x1="${chartX - 5}" y1="${label.y}" x2="${chartX}" y2="${label.y}" 
+        <line x1="${chartX - 8}" y1="${label.y}" x2="${chartX}" y2="${label.y}" 
               stroke="#000" stroke-width="2"/>
       `).join('')}
       
@@ -185,48 +185,68 @@ export default function handler(req, res) {
         const stepX = chartWidth / (commitData.length - 1);
         const x = chartX + (index * stepX);
         return `
-          <text x="${x}" y="${chartY + chartHeight + 25}" 
+          <text x="${x}" y="${chartY + chartHeight + 30}" 
                 font-family="Arial, sans-serif" 
-                font-size="14" 
+                font-size="16" 
                 font-weight="bold" 
                 fill="#000" 
                 text-anchor="middle">
             ${point.date}
           </text>
-          <line x1="${x}" y1="${chartY + chartHeight}" x2="${x}" y2="${chartY + chartHeight + 5}" 
+          <line x1="${x}" y1="${chartY + chartHeight}" x2="${x}" y2="${chartY + chartHeight + 8}" 
                 stroke="#000" stroke-width="2"/>
         `;
       }).join('')}
       
-      <!-- Area fill -->
+      <!-- Animated Area fill -->
       <path d="${areaPath}" 
             fill="#ff6b9d" 
-            opacity="0.8"/>
+            opacity="0">
+        <animate attributeName="opacity" 
+                 values="0;0.8" 
+                 dur="1.5s" 
+                 begin="0.5s"
+                 fill="freeze"/>
+      </path>
       
-      <!-- Line stroke -->
+      <!-- Animated Line stroke -->
       <path d="${linePath}" 
             fill="none" 
             stroke="#000" 
-            stroke-width="4"/>
+            stroke-width="4"
+            stroke-dasharray="${linePath.length}"
+            stroke-dashoffset="${linePath.length}">
+        <animate attributeName="stroke-dashoffset" 
+                 values="${linePath.length};0" 
+                 dur="2s" 
+                 begin="0s"
+                 fill="freeze"/>
+      </path>
       
-      <!-- Data points -->
-      ${dataPoints.map(point => `
-        <circle cx="${point.x}" cy="${point.y}" r="6" 
+      <!-- Animated Data points -->
+      ${dataPoints.map((point, index) => `
+        <circle cx="${point.x}" cy="${point.y}" r="0" 
                 fill="#000" 
                 stroke="#fff" 
-                stroke-width="3"/>
+                stroke-width="3">
+          <animate attributeName="r" 
+                   values="0;8" 
+                   dur="0.3s" 
+                   begin="${0.2 + (index * 0.1)}s"
+                   fill="freeze"/>
+        </circle>
       `).join('')}
       
       <!-- Footer -->
-      <rect x="250" y="520" width="300" height="50" 
+      <rect x="350" y="610" width="300" height="60" 
             fill="#000" 
             stroke="#000" 
             stroke-width="4" 
             filter="url(#dropShadow)"/>
       
-      <text x="400" y="550" 
+      <text x="500" y="650" 
             font-family="Arial, sans-serif" 
-            font-size="18" 
+            font-size="20" 
             font-weight="900" 
             fill="white" 
             text-anchor="middle" 
