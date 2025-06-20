@@ -38,77 +38,88 @@ export default async function handler(req, res) {
     const avgCommits = Math.round(totalCommits / 12);
     const maxCommits = Math.max(...monthlyCommits);
 
-    // Generate mini chart data (simplified bars)
+    // Generate mini chart data (proper bars with better scaling)
     const chartBars = months.map((month, index) => {
-      const height = Math.max(2, (commitCounts[month] / Math.max(maxCommits, 1)) * 40);
-      return `<rect x="${20 + index * 35}" y="${120 - height}" width="25" height="${height}" fill="#ff6b9d" stroke="#000" stroke-width="2"/>`;
+      const height = Math.max(5, (commitCounts[month] / Math.max(maxCommits, 1)) * 80);
+      const x = 70 + index * 40;
+      const y = 340 - height;
+      return `<rect x="${x}" y="${y}" width="30" height="${height}" fill="#ff6b9d" stroke="#000" stroke-width="2"/>
+              <text x="${x + 15}" y="${y - 5}" fill="#000" font-size="10" font-weight="bold" text-anchor="middle">${commitCounts[month]}</text>`;
     }).join('');
 
     const svg = `
-    <svg width="500" height="350" xmlns="http://www.w3.org/2000/svg">
+    <svg width="600" height="500" xmlns="http://www.w3.org/2000/svg">
       <style>
         text { font-family: 'Arial Black', Arial, sans-serif; font-weight: 900; }
-        .title { font-size: 24px; text-transform: uppercase; letter-spacing: 2px; }
-        .stat-number { font-size: 32px; }
-        .stat-label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
-        .month-label { font-size: 10px; font-weight: bold; }
+        .title { font-size: 20px; text-transform: uppercase; letter-spacing: 1px; }
+        .username { font-size: 18px; text-transform: uppercase; }
+        .stat-number { font-size: 28px; }
+        .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+        .chart-title { font-size: 14px; text-transform: uppercase; }
+        .month-label { font-size: 9px; font-weight: bold; }
+        .footer { font-size: 12px; text-transform: uppercase; }
       </style>
       
       <!-- Background -->
       <rect width="100%" height="100%" fill="#fde047"/>
       
       <!-- Main container with thick border -->
-      <rect x="10" y="10" width="480" height="330" fill="#ffffff" stroke="#000" stroke-width="6"/>
+      <rect x="15" y="15" width="570" height="470" fill="#ffffff" stroke="#000" stroke-width="6"/>
       
       <!-- Header section -->
-      <rect x="25" y="25" width="200" height="40" fill="#ec4899" stroke="#000" stroke-width="4"/>
-      <text x="35" y="48" fill="#000" class="title">GITHUB STATS</text>
+      <rect x="30" y="30" width="180" height="35" fill="#ec4899" stroke="#000" stroke-width="4"/>
+      <text x="40" y="52" fill="#000" class="title">GITHUB STATS</text>
       
       <!-- Username -->
-      <rect x="250" y="25" width="220" height="40" fill="#000" stroke="#000" stroke-width="4"/>
-      <text x="260" y="48" fill="#fff" class="title">${userData.login}</text>
+      <rect x="230" y="30" width="240" height="35" fill="#000" stroke="#000" stroke-width="4"/>
+      <text x="240" y="52" fill="#fff" class="username">${userData.login}</text>
       
-      <!-- Stats Cards -->
+      <!-- Stats Cards Row -->
       <!-- Total Commits Card -->
-      <rect x="25" y="85" width="140" height="90" fill="#06b6d4" stroke="#000" stroke-width="4" transform="rotate(1 95 130)"/>
-      <text x="95" y="115" fill="#000" class="stat-number" text-anchor="middle">${totalCommits}</text>
-      <text x="95" y="135" fill="#000" class="stat-label" text-anchor="middle">TOTAL</text>
-      <text x="95" y="150" fill="#000" class="stat-label" text-anchor="middle">COMMITS</text>
+      <rect x="30" y="90" width="160" height="80" fill="#06b6d4" stroke="#000" stroke-width="4"/>
+      <text x="110" y="120" fill="#000" class="stat-number" text-anchor="middle">${totalCommits}</text>
+      <text x="110" y="140" fill="#000" class="stat-label" text-anchor="middle">TOTAL COMMITS</text>
+      <text x="110" y="155" fill="#000" class="stat-label" text-anchor="middle">THIS YEAR</text>
       
       <!-- Avg Commits Card -->
-      <rect x="180" y="85" width="140" height="90" fill="#f472b6" stroke="#000" stroke-width="4" transform="rotate(-1 250 130)"/>
-      <text x="250" y="115" fill="#000" class="stat-number" text-anchor="middle">${avgCommits}</text>
-      <text x="250" y="135" fill="#000" class="stat-label" text-anchor="middle">AVG PER</text>
-      <text x="250" y="150" fill="#000" class="stat-label" text-anchor="middle">MONTH</text>
+      <rect x="220" y="90" width="160" height="80" fill="#f472b6" stroke="#000" stroke-width="4"/>
+      <text x="300" y="120" fill="#000" class="stat-number" text-anchor="middle">${avgCommits}</text>
+      <text x="300" y="140" fill="#000" class="stat-label" text-anchor="middle">AVG PER</text>
+      <text x="300" y="155" fill="#000" class="stat-label" text-anchor="middle">MONTH</text>
       
       <!-- Max Commits Card -->
-      <rect x="335" y="85" width="140" height="90" fill="#4ade80" stroke="#000" stroke-width="4" transform="rotate(1 405 130)"/>
-      <text x="405" y="115" fill="#000" class="stat-number" text-anchor="middle">${maxCommits}</text>
-      <text x="405" y="135" fill="#000" class="stat-label" text-anchor="middle">PEAK</text>
-      <text x="405" y="150" fill="#000" class="stat-label" text-anchor="middle">MONTH</text>
+      <rect x="410" y="90" width="160" height="80" fill="#4ade80" stroke="#000" stroke-width="4"/>
+      <text x="490" y="120" fill="#000" class="stat-number" text-anchor="middle">${maxCommits}</text>
+      <text x="490" y="140" fill="#000" class="stat-label" text-anchor="middle">PEAK</text>
+      <text x="490" y="155" fill="#000" class="stat-label" text-anchor="middle">MONTH</text>
       
       <!-- Chart Section -->
-      <rect x="25" y="190" width="450" height="130" fill="#f3f4f6" stroke="#000" stroke-width="4"/>
+      <rect x="30" y="200" width="540" height="180" fill="#f8fafc" stroke="#000" stroke-width="4"/>
       
       <!-- Chart Title -->
-      <rect x="35" y="200" width="160" height="25" fill="#000" stroke="#000" stroke-width="2"/>
-      <text x="115" y="218" fill="#fff" class="stat-label" text-anchor="middle">COMMIT TIMELINE</text>
+      <rect x="40" y="210" width="200" height="25" fill="#000" stroke="#000" stroke-width="2"/>
+      <text x="50" y="228" fill="#fff" class="chart-title">MONTHLY COMMIT ACTIVITY</text>
+      
+      <!-- Chart Background -->
+      <rect x="50" y="250" width="500" height="100" fill="#ffffff" stroke="#000" stroke-width="2"/>
       
       <!-- Chart bars -->
       ${chartBars}
       
       <!-- Month labels -->
       ${months.map((month, index) => 
-        `<text x="${32 + index * 35}" y="140" fill="#000" class="month-label" text-anchor="middle">${month}</text>`
+        `<text x="${75 + index * 40}" y="370" fill="#000" class="month-label" text-anchor="middle">${month}</text>`
       ).join('')}
       
-      <!-- Followers/Following -->
-      <text x="35" y="270" fill="#000" class="stat-label">👥 FOLLOWERS: ${userData.followers}</text>
-      <text x="35" y="290" fill="#000" class="stat-label">📦 REPOS: ${userData.public_repos}</text>
+      <!-- Additional Stats -->
+      <rect x="30" y="410" width="250" height="50" fill="#a78bfa" stroke="#000" stroke-width="4"/>
+      <text x="40" y="430" fill="#000" class="stat-label">👥 FOLLOWERS: ${userData.followers}</text>
+      <text x="40" y="445" fill="#000" class="stat-label">📦 PUBLIC REPOS: ${userData.public_repos}</text>
       
-      <!-- Footer -->
-      <rect x="200" y="300" width="200" height="25" fill="#000" stroke="#000" stroke-width="2" transform="rotate(-1 300 312)"/>
-      <text x="300" y="318" fill="#fff" class="stat-label" text-anchor="middle">KEEP CODING • STAY BRUTAL</text>
+      <!-- Profile Stats -->
+      <rect x="320" y="410" width="250" height="50" fill="#fbbf24" stroke="#000" stroke-width="4"/>
+      <text x="330" y="430" fill="#000" class="stat-label">⭐ ACCOUNT SINCE: ${new Date(userData.created_at).getFullYear()}</text>
+      <text x="330" y="445" fill="#000" class="stat-label">📍 LOCATION: ${userData.location || 'Not specified'}</text>
     </svg>
     `;
 
@@ -121,16 +132,18 @@ export default async function handler(req, res) {
     
     // Fallback SVG with error message
     const errorSvg = `
-    <svg width="500" height="200" xmlns="http://www.w3.org/2000/svg">
+    <svg width="600" height="300" xmlns="http://www.w3.org/2000/svg">
       <style>
         text { font-family: 'Arial Black', Arial, sans-serif; font-weight: 900; }
       </style>
       <rect width="100%" height="100%" fill="#fde047"/>
-      <rect x="10" y="10" width="480" height="180" fill="#ffffff" stroke="#000" stroke-width="6"/>
-      <rect x="25" y="25" width="450" height="50" fill="#ef4444" stroke="#000" stroke-width="4"/>
-      <text x="250" y="55" fill="#fff" font-size="20" text-anchor="middle">ERROR LOADING STATS</text>
-      <text x="250" y="120" fill="#000" font-size="16" text-anchor="middle">User: ${username}</text>
-      <text x="250" y="145" fill="#000" font-size="14" text-anchor="middle">Check username or try again later</text>
+      <rect x="15" y="15" width="570" height="270" fill="#ffffff" stroke="#000" stroke-width="6"/>
+      <rect x="30" y="30" width="540" height="60" fill="#ef4444" stroke="#000" stroke-width="4"/>
+      <text x="300" y="65" fill="#fff" font-size="24" text-anchor="middle">ERROR LOADING STATS</text>
+      <text x="300" y="150" fill="#000" font-size="18" text-anchor="middle">User: ${username}</text>
+      <text x="300" y="180" fill="#000" font-size="16" text-anchor="middle">Check username or try again later</text>
+      <rect x="150" y="220" width="300" height="30" fill="#000" stroke="#000" stroke-width="2"/>
+      <text x="300" y="240" fill="#fff" font-size="14" text-anchor="middle">GITHUB API ERROR</text>
     </svg>
     `;
     
