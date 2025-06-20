@@ -180,8 +180,25 @@ function getLanguageShadowColor(language) {
   return shadowColors[language] || '#9ca3af';
 }
 
+function estimateTextWidth(text, fontSize) {
+  // Approximate text width calculation (characters * fontSize * ratio)
+  return text.length * fontSize * 0.6;
+}
+
+function estimateTextHeight(fontSize) {
+  return fontSize;
+}
+
+function checkCollision(rect1, rect2, padding = 5) {
+  return !(rect1.right + padding < rect2.left || 
+           rect2.right + padding < rect1.left || 
+           rect1.bottom + padding < rect2.top || 
+           rect2.bottom + padding < rect1.top);
+}
+
 function calculateWordCloudPositions(languages, containerWidth, containerHeight) {
   const positions = [];
+  const placedRects = [];
   const padding = 20;
   const usableWidth = containerWidth - (padding * 2);
   const usableHeight = containerHeight - (padding * 2);
@@ -191,48 +208,106 @@ function calculateWordCloudPositions(languages, containerWidth, containerHeight)
   const minPercentage = Math.min(...languages.map(l => l.percentage));
   
   const getFontSize = (percentage) => {
-    const minFontSize = 16;
-    const maxFontSize = 48;
+    const minFontSize = 14;
+    const maxFontSize = 36;
     if (maxPercentage === minPercentage) return minFontSize;
     return minFontSize + ((percentage - minPercentage) / (maxPercentage - minPercentage)) * (maxFontSize - minFontSize);
   };
 
-  // Simple grid-based positioning with some randomization
-  const cols = Math.ceil(Math.sqrt(languages.length));
-  const rows = Math.ceil(languages.length / cols);
-  const cellWidth = usableWidth / cols;
-  const cellHeight = usableHeight / rows;
+  // Sort languages by percentage (largest first for better placement)
+  const sortedLanguages = [...languages].sort((a, b) => b.percentage - a.percentage);
 
-  languages.forEach((lang, index) => {
+  sortedLanguages.forEach((lang, index) => {
     const fontSize = getFontSize(lang.percentage);
-    const row = Math.floor(index / cols);
-    const col = index % cols;
+    const textWidth = estimateTextWidth(lang.name, fontSize);
+    const textHeight = estimateTextHeight(fontSize);
     
-    // Base position in grid
-    const baseX = col * cellWidth + cellWidth / 2;
-    const baseY = row * cellHeight + cellHeight / 2;
+    let placed = false;
+    let attempts = 0;
+    const maxAttempts = 100;
     
-    // Add some randomization to avoid perfect grid
-    const randomOffsetX = (Math.random() - 0.5) * (cellWidth * 0.3);
-    const randomOffsetY = (Math.random() - 0.5) * (cellHeight * 0.3);
+    // Try to place the text without collision
+    while (!placed && attempts < maxAttempts) {
+      let x, y;
+      
+      if (attempts < 50) {
+        // First 50 attempts: try spiral pattern from center
+        const angle = attempts * 0.5;
+        const radius = attempts * 3;
+        const centerX = usableWidth / 2;
+        const centerY = usableHeight / 2;
+        
+        x = centerX + Math.cos(angle) * radius;
+        y = centerY + Math.sin(angle) * radius;
+      } else {
+        // Random placement as fallback
+        x = Math.random() * (usableWidth - textWidth);
+        y = Math.random() * (usableHeight - textHeight);
+      }
+      
+      // Ensure text stays within bounds
+      x = Math.max(padding, Math.min(usableWidth - textWidth + padding, x));
+      y = Math.max(padding + textHeight, Math.min(usableHeight - textHeight + padding, y));
+      
+      // Create rectangle for collision detection
+      const rect = {
+        left: x - textWidth / 2,
+        right: x + textWidth / 2,
+        top: y - textHeight / 2,
+        bottom: y + textHeight / 2
+      };
+      
+      // Check for collisions with already placed text
+      let hasCollision = false;
+      for (const placedRect of placedRects) {
+        if (checkCollision(rect, placedRect, 8)) {
+          hasCollision = true;
+          break;
+        }
+      }
+      
+      if (!hasCollision) {
+        // Position is good, save it
+        positions.push({
+          x: x,
+          y: y,
+          fontSize: fontSize
+        });
+        placedRects.push(rect);
+        placed = true;
+      }
+      
+      attempts++;
+    }
     
-    // Ensure text stays within bounds
-    const textWidth = lang.name.length * fontSize * 0.6; // Approximate text width
-    let finalX = baseX + randomOffsetX;
-    let finalY = baseY + randomOffsetY;
-    
-    // Boundary checks
-    finalX = Math.max(padding + textWidth / 2, Math.min(usableWidth + padding - textWidth / 2, finalX));
-    finalY = Math.max(padding + fontSize / 2, Math.min(usableHeight + padding - fontSize / 2, finalY));
-    
-    positions.push({
-      x: finalX,
-      y: finalY,
-      fontSize: fontSize
-    });
+    // If we couldn't place it without collision, place it anyway with fallback position
+    if (!placed) {
+      // Fallback: place in a grid pattern
+      const cols = Math.ceil(Math.sqrt(sortedLanguages.length));
+      const cellWidth = usableWidth / cols;
+      const cellHeight = usableHeight / Math.ceil(sortedLanguages.length / cols);
+      const row = Math.floor(index / cols);
+      const col = index % cols;
+      
+      const x = col * cellWidth + cellWidth / 2 + padding;
+      const y = row * cellHeight + cellHeight / 2 + padding;
+      
+      positions.push({
+        x: Math.min(x, usableWidth - textWidth / 2 + padding),
+        y: Math.min(y, usableHeight - textHeight / 2 + padding),
+        fontSize: Math.min(fontSize, 18) // Reduce font size for fallback
+      });
+    }
   });
 
-  return positions;
+  // Re-map positions back to original order
+  const finalPositions = [];
+  languages.forEach(lang => {
+    const sortedIndex = sortedLanguages.findIndex(sortedLang => sortedLang.name === lang.name);
+    finalPositions.push(positions[sortedIndex]);
+  });
+
+  return finalPositions;
 }
 
 function generateLanguagesSVG(languageData, user, theme, title, svgWidth, svgHeight) {
@@ -324,7 +399,7 @@ function generateLanguagesSVG(languageData, user, theme, title, svgWidth, svgHei
         
         return `
           <!-- Language shadow -->
-          <text x="${x + 3}" y="${y + 3}" 
+          <text x="${x + 2}" y="${y + 2}" 
                 class="lang-text" 
                 font-size="${pos.fontSize}" 
                 fill="${lang.shadowColor}"
