@@ -1,15 +1,19 @@
 export default async function handler(req, res) {
   const username = req.query.user;
+  
   if (!username) {
-    return res.status(400).send('Missing ?user=username');
+    return res.status(400).json({ error: 'Missing ?user=username parameter' });
   }
 
   try {
     // Fetch user data
     const userResponse = await fetch(`https://api.github.com/users/${username}`);
+    if (!userResponse.ok) {
+      throw new Error(`User not found: ${username}`);
+    }
     const userData = await userResponse.json();
 
-    // Fetch recent commits (simplified - using events as proxy for activity)
+    // Fetch recent events for commit activity
     const eventsResponse = await fetch(`https://api.github.com/users/${username}/events?per_page=100`);
     const events = await eventsResponse.json();
     
@@ -38,7 +42,7 @@ export default async function handler(req, res) {
     const avgCommits = Math.round(totalCommits / 12);
     const maxCommits = Math.max(...monthlyCommits);
 
-    // Generate mini chart data (proper bars with better scaling)
+    // Generate chart bars
     const chartBars = months.map((month, index) => {
       const height = Math.max(5, (commitCounts[month] / Math.max(maxCommits, 1)) * 80);
       const x = 70 + index * 40;
@@ -47,6 +51,12 @@ export default async function handler(req, res) {
               <text x="${x + 15}" y="${y - 5}" fill="#000" font-size="10" font-weight="bold" text-anchor="middle">${commitCounts[month]}</text>`;
     }).join('');
 
+    // Month labels
+    const monthLabels = months.map((month, index) => 
+      `<text x="${75 + index * 40}" y="370" fill="#000" class="month-label" text-anchor="middle">${month}</text>`
+    ).join('');
+
+    // Generate the SVG
     const svg = `
     <svg width="600" height="500" xmlns="http://www.w3.org/2000/svg">
       <style>
@@ -57,13 +67,12 @@ export default async function handler(req, res) {
         .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
         .chart-title { font-size: 14px; text-transform: uppercase; }
         .month-label { font-size: 9px; font-weight: bold; }
-        .footer { font-size: 12px; text-transform: uppercase; }
       </style>
       
       <!-- Background -->
       <rect width="100%" height="100%" fill="#fde047"/>
       
-      <!-- Main container with thick border -->
+      <!-- Main container -->
       <rect x="15" y="15" width="570" height="470" fill="#ffffff" stroke="#000" stroke-width="6"/>
       
       <!-- Header section -->
@@ -107,9 +116,7 @@ export default async function handler(req, res) {
       ${chartBars}
       
       <!-- Month labels -->
-      ${months.map((month, index) => 
-        `<text x="${75 + index * 40}" y="370" fill="#000" class="month-label" text-anchor="middle">${month}</text>`
-      ).join('')}
+      ${monthLabels}
       
       <!-- Additional Stats -->
       <rect x="30" y="410" width="250" height="50" fill="#a78bfa" stroke="#000" stroke-width="4"/>
@@ -123,25 +130,36 @@ export default async function handler(req, res) {
     </svg>
     `;
 
+    // Set headers and return SVG
     res.setHeader('Content-Type', 'image/svg+xml');
-    res.setHeader('Cache-Control', 's-maxage=1800');
+    res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate');
     res.status(200).send(svg);
 
   } catch (error) {
     console.error('Error fetching GitHub data:', error);
     
-    // Fallback SVG with error message
+    // Fallback error SVG
     const errorSvg = `
     <svg width="600" height="300" xmlns="http://www.w3.org/2000/svg">
       <style>
         text { font-family: 'Arial Black', Arial, sans-serif; font-weight: 900; }
       </style>
+      
+      <!-- Background -->
       <rect width="100%" height="100%" fill="#fde047"/>
+      
+      <!-- Main container -->
       <rect x="15" y="15" width="570" height="270" fill="#ffffff" stroke="#000" stroke-width="6"/>
+      
+      <!-- Error header -->
       <rect x="30" y="30" width="540" height="60" fill="#ef4444" stroke="#000" stroke-width="4"/>
       <text x="300" y="65" fill="#fff" font-size="24" text-anchor="middle">ERROR LOADING STATS</text>
+      
+      <!-- Error details -->
       <text x="300" y="150" fill="#000" font-size="18" text-anchor="middle">User: ${username}</text>
       <text x="300" y="180" fill="#000" font-size="16" text-anchor="middle">Check username or try again later</text>
+      
+      <!-- Footer -->
       <rect x="150" y="220" width="300" height="30" fill="#000" stroke="#000" stroke-width="2"/>
       <text x="300" y="240" fill="#fff" font-size="14" text-anchor="middle">GITHUB API ERROR</text>
     </svg>
