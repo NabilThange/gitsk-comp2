@@ -1,55 +1,249 @@
 // api/most-used-languages.js
-export default function handler(req, res) {
+export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   res.setHeader('Content-Type', 'image/svg+xml');
-  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.setHeader('Cache-Control', 'public, max-age=1800'); // 30 minutes cache
 
   // Extract query parameters
   const { 
-    user = 'Developer',
+    user = 'octocat',
     theme = 'dark',
     title = 'MOST USED LANGUAGES',
     width = '800',
-    height = '600'
+    height = '600',
+    limit = '12'
   } = req.query;
 
-  // Sample data for most used languages with dynamic sizing
-  const languageData = [
-    { name: "JavaScript", value: 100, color: "#facc15", shadowColor: "#a3e635" }, // yellow-400, lime-400
-    { name: "Python", value: 80, color: "#22d3ee", shadowColor: "#f43f5e" }, // cyan-400, rose-500
-    { name: "TypeScript", value: 70, color: "#60a5fa", shadowColor: "#facc15" }, // blue-400, yellow-400
-    { name: "HTML", value: 60, color: "#fb923c", shadowColor: "#8b5cf6" }, // orange-400, violet-500
-    { name: "CSS", value: 55, color: "#c084fc", shadowColor: "#ec4899" }, // purple-400, pink-500
-    { name: "Java", value: 45, color: "#f87171", shadowColor: "#22d3ee" }, // red-400, cyan-400
-    { name: "Go", value: 35, color: "#a3e635", shadowColor: "#f87171" }, // lime-400, red-400
-    { name: "C#", value: 30, color: "#34d399", shadowColor: "#fbbf24" }, // emerald-400, amber-400
-    { name: "PHP", value: 25, color: "#818cf8", shadowColor: "#a78bfa" }, // indigo-400, violet-400
-    { name: "Ruby", value: 20, color: "#e879f9", shadowColor: "#60a5fa" }, // fuchsia-400, blue-400
-    { name: "Rust", value: 15, color: "#f472b6", shadowColor: "#f472b6" }, // pink-400
-    { name: "Shell", value: 10, color: "#9ca3af", shadowColor: "#9ca3af" }, // gray-400
-  ];
+  if (!user || user === 'octocat') {
+    return res.status(400).send(generateErrorSVG('Please provide a GitHub username: ?user=yourname'));
+  }
 
-  // Calculate font sizes based on values
-  const minVal = Math.min(...languageData.map(lang => lang.value));
-  const maxVal = Math.max(...languageData.map(lang => lang.value));
+  try {
+    // Fetch user's repositories
+    const reposResponse = await fetch(`https://api.github.com/users/${user}/repos?per_page=100&sort=updated`, {
+      headers: {
+        'User-Agent': 'GitHub-Language-Stats-API',
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+
+    if (!reposResponse.ok) {
+      if (reposResponse.status === 404) {
+        return res.status(404).send(generateErrorSVG(`User '${user}' not found`));
+      }
+      throw new Error(`GitHub API error: ${reposResponse.status}`);
+    }
+
+    const repos = await reposResponse.json();
+    
+    if (!Array.isArray(repos) || repos.length === 0) {
+      return res.status(404).send(generateErrorSVG(`No repositories found for user '${user}'`));
+    }
+
+    // Fetch language data for each repository
+    const languagePromises = repos
+      .filter(repo => !repo.fork) // Exclude forked repos
+      .slice(0, 50) // Limit to first 50 repos to avoid rate limits
+      .map(async (repo) => {
+        try {
+          const langResponse = await fetch(`https://api.github.com/repos/${repo.owner.login}/${repo.name}/languages`, {
+            headers: {
+              'User-Agent': 'GitHub-Language-Stats-API',
+              'Accept': 'application/vnd.github.v3+json'
+            }
+          });
+          
+          if (langResponse.ok) {
+            return await langResponse.json();
+          }
+          return {};
+        } catch (error) {
+          console.error(`Error fetching languages for ${repo.name}:`, error);
+          return {};
+        }
+      });
+
+    const languageResults = await Promise.all(languagePromises);
+
+    // Aggregate language data
+    const languageStats = {};
+    languageResults.forEach(repoLanguages => {
+      Object.entries(repoLanguages).forEach(([language, bytes]) => {
+        languageStats[language] = (languageStats[language] || 0) + bytes;
+      });
+    });
+
+    // Convert to array and sort by usage
+    const sortedLanguages = Object.entries(languageStats)
+      .map(([name, bytes]) => ({ name, bytes }))
+      .sort((a, b) => b.bytes - a.bytes)
+      .slice(0, parseInt(limit));
+
+    if (sortedLanguages.length === 0) {
+      return res.status(404).send(generateErrorSVG(`No language data found for user '${user}'`));
+    }
+
+    // Calculate percentages and prepare data
+    const totalBytes = sortedLanguages.reduce((sum, lang) => sum + lang.bytes, 0);
+    const languageData = sortedLanguages.map((lang, index) => ({
+      name: lang.name,
+      bytes: lang.bytes,
+      percentage: (lang.bytes / totalBytes) * 100,
+      color: getLanguageColor(lang.name),
+      shadowColor: getLanguageShadowColor(lang.name)
+    }));
+
+    // Generate SVG
+    const svg = generateLanguagesSVG(languageData, user, theme, title, parseInt(width), parseInt(height));
+    res.send(svg);
+
+  } catch (error) {
+    console.error('API Error:', error);
+    res.status(500).send(generateErrorSVG('Unable to fetch language data'));
+  }
+}
+
+function generateErrorSVG(message) {
+  return `
+    <svg width="800" height="400" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100%" height="100%" fill="#030712"/>
+      <rect x="20" y="20" width="760" height="360" fill="#000" stroke="#fff" stroke-width="4"/>
+      <text x="400" y="200" font-family="Arial, sans-serif" font-size="20" fill="#ef4444" text-anchor="middle">
+        Error: ${message}
+      </text>
+    </svg>
+  `.trim();
+}
+
+function getLanguageColor(language) {
+  const colors = {
+    'JavaScript': '#f7df1e',
+    'TypeScript': '#3178c6',
+    'Python': '#3776ab',
+    'Java': '#ed8b00',
+    'C++': '#00599c',
+    'C#': '#239120',
+    'PHP': '#777bb4',
+    'Ruby': '#cc342d',
+    'Go': '#00add8',
+    'Rust': '#000000',
+    'Swift': '#fa7343',
+    'Kotlin': '#7f52ff',
+    'Dart': '#0175c2',
+    'C': '#a8b9cc',
+    'HTML': '#e34f26',
+    'CSS': '#1572b6',
+    'Vue': '#4fc08d',
+    'React': '#61dafb',
+    'Angular': '#dd0031',
+    'Svelte': '#ff3e00',
+    'Shell': '#89e051',
+    'PowerShell': '#012456',
+    'Dockerfile': '#384d54',
+    'YAML': '#cb171e',
+    'JSON': '#000000',
+    'Markdown': '#083fa1',
+    'SQL': '#e38c00',
+    'R': '#276dc3',
+    'Scala': '#dc322f',
+    'Clojure': '#5881d8',
+    'Haskell': '#5e5086',
+    'Lua': '#000080',
+    'Perl': '#39457e',
+    'Objective-C': '#438eff',
+    'Assembly': '#6e4c13',
+    'MATLAB': '#e16737',
+    'Jupyter Notebook': '#da5b0b'
+  };
+  return colors[language] || '#6b7280';
+}
+
+function getLanguageShadowColor(language) {
+  const shadowColors = {
+    'JavaScript': '#facc15',
+    'TypeScript': '#60a5fa',
+    'Python': '#22d3ee',
+    'Java': '#f87171',
+    'C++': '#a78bfa',
+    'C#': '#34d399',
+    'PHP': '#818cf8',
+    'Ruby': '#e879f9',
+    'Go': '#a3e635',
+    'Rust': '#f472b6',
+    'Swift': '#fb923c',
+    'Kotlin': '#c084fc',
+    'HTML': '#fb923c',
+    'CSS': '#c084fc'
+  };
+  return shadowColors[language] || '#9ca3af';
+}
+
+function calculateWordCloudPositions(languages, containerWidth, containerHeight) {
+  const positions = [];
+  const padding = 20;
+  const usableWidth = containerWidth - (padding * 2);
+  const usableHeight = containerHeight - (padding * 2);
   
-  const getFontSize = (value) => {
-    const minFontSize = 14;
+  // Calculate font sizes first
+  const maxPercentage = Math.max(...languages.map(l => l.percentage));
+  const minPercentage = Math.min(...languages.map(l => l.percentage));
+  
+  const getFontSize = (percentage) => {
+    const minFontSize = 16;
     const maxFontSize = 48;
-    if (maxVal === minVal) return minFontSize;
-    return minFontSize + ((value - minVal) / (maxVal - minVal)) * (maxFontSize - minFontSize);
+    if (maxPercentage === minPercentage) return minFontSize;
+    return minFontSize + ((percentage - minPercentage) / (maxPercentage - minPercentage)) * (maxFontSize - minFontSize);
   };
 
+  // Simple grid-based positioning with some randomization
+  const cols = Math.ceil(Math.sqrt(languages.length));
+  const rows = Math.ceil(languages.length / cols);
+  const cellWidth = usableWidth / cols;
+  const cellHeight = usableHeight / rows;
+
+  languages.forEach((lang, index) => {
+    const fontSize = getFontSize(lang.percentage);
+    const row = Math.floor(index / cols);
+    const col = index % cols;
+    
+    // Base position in grid
+    const baseX = col * cellWidth + cellWidth / 2;
+    const baseY = row * cellHeight + cellHeight / 2;
+    
+    // Add some randomization to avoid perfect grid
+    const randomOffsetX = (Math.random() - 0.5) * (cellWidth * 0.3);
+    const randomOffsetY = (Math.random() - 0.5) * (cellHeight * 0.3);
+    
+    // Ensure text stays within bounds
+    const textWidth = lang.name.length * fontSize * 0.6; // Approximate text width
+    let finalX = baseX + randomOffsetX;
+    let finalY = baseY + randomOffsetY;
+    
+    // Boundary checks
+    finalX = Math.max(padding + textWidth / 2, Math.min(usableWidth + padding - textWidth / 2, finalX));
+    finalY = Math.max(padding + fontSize / 2, Math.min(usableHeight + padding - fontSize / 2, finalY));
+    
+    positions.push({
+      x: finalX,
+      y: finalY,
+      fontSize: fontSize
+    });
+  });
+
+  return positions;
+}
+
+function generateLanguagesSVG(languageData, user, theme, title, svgWidth, svgHeight) {
   // Theme colors
   const themes = {
     dark: {
-      bg: '#030712', // gray-950
+      bg: '#030712',
       containerBg: '#000000',
-      contentBg: '#111827', // gray-900
+      contentBg: '#111827',
       border: '#ffffff',
-      titleBg: '#a3e635', // lime-400
+      titleBg: '#a3e635',
       titleText: '#000000',
       footerBg: '#ffffff',
       footerText: '#000000',
@@ -75,35 +269,18 @@ export default function handler(req, res) {
   };
 
   const currentTheme = themes[theme] || themes.dark;
-  const svgWidth = parseInt(width);
-  const svgHeight = parseInt(height);
+  
+  // Calculate positions within the content area
+  const contentAreaX = 60;
+  const contentAreaY = 160;
+  const contentAreaWidth = svgWidth - 168;
+  const contentAreaHeight = 320;
+  
+  const positions = calculateWordCloudPositions(languageData, contentAreaWidth, contentAreaHeight);
 
-  // Position languages in a word cloud layout
-  const positions = [
-    { x: 200, y: 180 }, // JavaScript (largest)
-    { x: 350, y: 140 }, // Python
-    { x: 480, y: 200 }, // TypeScript
-    { x: 150, y: 240 }, // HTML
-    { x: 580, y: 160 }, // CSS
-    { x: 320, y: 280 }, // Java
-    { x: 450, y: 260 }, // Go
-    { x: 250, y: 320 }, // C#
-    { x: 520, y: 300 }, // PHP
-    { x: 180, y: 350 }, // Ruby
-    { x: 400, y: 340 }, // Rust
-    { x: 300, y: 200 }, // Shell
-  ];
-
-  // Generate SVG
-  const svg = `
+  return `
     <svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <!-- Drop shadow filter -->
-        <filter id="dropshadow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="4" dy="4" stdDeviation="0" flood-color="currentColor" flood-opacity="1"/>
-        </filter>
-        
-        <!-- Bold font style -->
         <style>
           .title { font-family: 'Arial Black', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; }
           .lang-text { font-family: 'Arial Black', Arial, sans-serif; font-weight: 900; text-transform: uppercase; cursor: pointer; }
@@ -115,24 +292,12 @@ export default function handler(req, res) {
       <rect width="100%" height="100%" fill="${currentTheme.bg}"/>
       
       <!-- Main container with shadow -->
-      <rect x="20" y="20" width="${svgWidth - 64}" height="${svgHeight - 40}" 
-            fill="${currentTheme.containerBg}" 
-            stroke="${currentTheme.border}" 
-            stroke-width="6"/>
-      <rect x="32" y="32" width="${svgWidth - 64}" height="${svgHeight - 40}" 
-            fill="${currentTheme.containerShadow}" 
-            stroke="none"/>
-      <rect x="20" y="20" width="${svgWidth - 64}" height="${svgHeight - 40}" 
-            fill="${currentTheme.containerBg}" 
-            stroke="${currentTheme.border}" 
-            stroke-width="6"/>
+      <rect x="32" y="32" width="${svgWidth - 64}" height="${svgHeight - 40}" fill="${currentTheme.containerShadow}"/>
+      <rect x="20" y="20" width="${svgWidth - 64}" height="${svgHeight - 40}" fill="${currentTheme.containerBg}" stroke="${currentTheme.border}" stroke-width="6"/>
       
       <!-- Title block with shadow -->
       <rect x="68" y="68" width="460" height="76" fill="${currentTheme.titleShadow}"/>
-      <rect x="60" y="60" width="460" height="76" 
-            fill="${currentTheme.titleBg}" 
-            stroke="${currentTheme.border}" 
-            stroke-width="3"/>
+      <rect x="60" y="60" width="460" height="76" fill="${currentTheme.titleBg}" stroke="${currentTheme.border}" stroke-width="3"/>
       
       <!-- Code icon (simplified) -->
       <rect x="80" y="80" width="8" height="36" fill="${currentTheme.titleText}"/>
@@ -146,30 +311,32 @@ export default function handler(req, res) {
       </text>
       
       <!-- Content area with shadow -->
-      <rect x="72" y="172" width="${svgWidth - 168}" height="320" fill="${currentTheme.contentShadow}"/>
-      <rect x="60" y="160" width="${svgWidth - 168}" height="320" 
-            fill="${currentTheme.contentBg}" 
-            stroke="${currentTheme.border}" 
-            stroke-width="3"/>
+      <rect x="72" y="172" width="${contentAreaWidth}" height="${contentAreaHeight}" fill="${currentTheme.contentShadow}"/>
+      <rect x="${contentAreaX}" y="${contentAreaY}" width="${contentAreaWidth}" height="${contentAreaHeight}" fill="${currentTheme.contentBg}" stroke="${currentTheme.border}" stroke-width="3"/>
       
       <!-- Language word cloud -->
       ${languageData.map((lang, index) => {
-        const pos = positions[index] || { x: 100 + (index * 60) % 400, y: 200 + Math.floor(index / 6) * 60 };
-        const fontSize = getFontSize(lang.value);
+        const pos = positions[index];
+        if (!pos) return '';
+        
+        const x = contentAreaX + pos.x;
+        const y = contentAreaY + pos.y;
         
         return `
           <!-- Language shadow -->
-          <text x="${pos.x + 3}" y="${pos.y + 3}" 
+          <text x="${x + 3}" y="${y + 3}" 
                 class="lang-text" 
-                font-size="${fontSize}" 
-                fill="${lang.shadowColor}">
+                font-size="${pos.fontSize}" 
+                fill="${lang.shadowColor}"
+                text-anchor="middle">
             ${lang.name}
           </text>
           <!-- Language text -->
-          <text x="${pos.x}" y="${pos.y}" 
+          <text x="${x}" y="${y}" 
                 class="lang-text" 
-                font-size="${fontSize}" 
-                fill="${lang.color}">
+                font-size="${pos.fontSize}" 
+                fill="${lang.color}"
+                text-anchor="middle">
             ${lang.name}
           </text>
         `;
@@ -177,32 +344,22 @@ export default function handler(req, res) {
       
       <!-- Footer with shadow -->
       <rect x="292" y="524" width="316" height="56" fill="${currentTheme.footerShadow}"/>
-      <rect x="280" y="512" width="316" height="56" 
-            fill="${currentTheme.footerBg}" 
-            stroke="${currentTheme.titleBg}" 
-            stroke-width="3"/>
+      <rect x="280" y="512" width="316" height="56" fill="${currentTheme.footerBg}" stroke="${currentTheme.titleBg}" stroke-width="3"/>
       
       <!-- Footer text -->
-      <text x="438" y="545" class="footer-text" 
-            fill="${currentTheme.footerText}" 
-            font-size="18" 
-            text-anchor="middle">
+      <text x="438" y="545" class="footer-text" fill="${currentTheme.footerText}" font-size="18" text-anchor="middle">
         CODE SPEAKS VOLUMES
       </text>
       
-      <!-- User attribution (if provided) -->
-      ${user !== 'Developer' ? `
-        <text x="${svgWidth - 20}" y="${svgHeight - 10}" 
-              font-family="Arial, sans-serif" 
-              font-size="12" 
-              fill="${currentTheme.border}" 
-              text-anchor="end" 
-              opacity="0.7">
-          @${user}
-        </text>
-      ` : ''}
+      <!-- User attribution -->
+      <text x="${svgWidth - 20}" y="${svgHeight - 10}" 
+            font-family="Arial, sans-serif" 
+            font-size="12" 
+            fill="${currentTheme.border}" 
+            text-anchor="end" 
+            opacity="0.7">
+        @${user}
+      </text>
     </svg>
   `.trim();
-
-  res.send(svg);
 }
