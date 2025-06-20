@@ -78,6 +78,23 @@ export default function handler(req, res) {
     return pathData;
   }
 
+  // Calculate approximate path length for animation
+  function calculatePathLength(data) {
+    const stepX = chartWidth / (data.length - 1);
+    let totalLength = 0;
+    
+    for (let i = 1; i < data.length; i++) {
+      const x1 = chartX + ((i - 1) * stepX);
+      const y1 = chartY + chartHeight - (data[i - 1].commits / maxCommits) * chartHeight;
+      const x2 = chartX + (i * stepX);
+      const y2 = chartY + chartHeight - (data[i].commits / maxCommits) * chartHeight;
+      
+      totalLength += Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+    }
+    
+    return Math.ceil(totalLength);
+  }
+
   // Generate data points
   function generateDataPoints(data) {
     const stepX = chartWidth / (data.length - 1);
@@ -102,6 +119,7 @@ export default function handler(req, res) {
 
   const areaPath = generateAreaPath(commitData);
   const linePath = generateLinePath(commitData);
+  const pathLength = calculatePathLength(commitData);
   const dataPoints = generateDataPoints(commitData);
   const yAxisLabels = generateYAxisLabels();
 
@@ -167,8 +185,8 @@ export default function handler(req, res) {
             stroke="#000" stroke-width="3"/>
       
       <!-- Y-axis labels -->
-      ${yAxisLabels.map(label => `
-        <text x="${chartX - 20}" y="${label.y + 6}" 
+      ${yAxisLabels.map((label, index) => `
+        <text x="${chartX - 25}" y="${label.y + 7}" 
               font-family="Arial, sans-serif" 
               font-size="16" 
               font-weight="bold" 
@@ -176,7 +194,7 @@ export default function handler(req, res) {
               text-anchor="end">
           ${label.value}
         </text>
-        <line x1="${chartX - 8}" y1="${label.y}" x2="${chartX}" y2="${label.y}" 
+        <line x1="${chartX - 10}" y1="${label.y}" x2="${chartX}" y2="${label.y}" 
               stroke="#000" stroke-width="2"/>
       `).join('')}
       
@@ -214,10 +232,10 @@ export default function handler(req, res) {
             fill="none" 
             stroke="#000" 
             stroke-width="4"
-            stroke-dasharray="${linePath.length}"
-            stroke-dashoffset="${linePath.length}">
+            stroke-dasharray="${pathLength}"
+            stroke-dashoffset="${pathLength}">
         <animate attributeName="stroke-dashoffset" 
-                 values="${linePath.length};0" 
+                 values="${pathLength};0" 
                  dur="2s" 
                  begin="0s"
                  fill="freeze"/>
